@@ -643,8 +643,7 @@ zu-ZA-ThembaNeural                 Male      General                Friendly, Po
 
 * Run in command line
 ```
-python3 main.py --tts edge --language zh-CN --worker_count 2 --voice_name zh-CN-Y
-unyangNeural --proxy http://192.168.8.37:8080 --no_prompt /home/horky/workspace/epub_to_audio/德川幕府.epub /home/horky/workspace/epub_to_audio/
+python3 main.py --tts edge --language zh-CN --worker_count 2 --voice_name zh-CN-YunyangNeural --no_prompt /home/horky/workspace/epub_to_audio/test.epub /home/horky/workspace/epub_to_audio/
 ```
 
 Console output:
