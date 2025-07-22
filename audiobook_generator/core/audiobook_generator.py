@@ -9,7 +9,7 @@ from audiobook_generator.tts_providers.base_tts_provider import get_tts_provider
 from audiobook_generator.utils.log_handler import setup_logging
 
 logger = logging.getLogger(__name__)
-
+LOG_PREFIX = "BOOKBARN"
 
 def confirm_conversion():
     logger.info("Do you want to continue? (y/n)")
@@ -36,7 +36,7 @@ class AudiobookGenerator:
     def process_chapter(self, idx, title, text, book_parser):
         """Process a single chapter: write text (if needed) and convert to audio."""
         try:
-            logger.info(f"Processing chapter {idx}: {title}")
+            logger.info(f"[{LOG_PREFIX}]Processing:{idx},{title}")
             tts_provider = get_tts_provider(self.config)
 
             # Save chapter text if required
@@ -60,6 +60,7 @@ class AudiobookGenerator:
             tts_provider.text_to_speech(text, output_file, audio_tags)
 
             logger.info(f"✅ Converted chapter {idx}: {title}, output file: {output_file}")
+            logger.info(f"[{LOG_PREFIX}]Converted:{idx},{title}")
 
             return True
         except Exception as e:
@@ -82,7 +83,7 @@ class AudiobookGenerator:
             # Filter out empty or very short chapters
             chapters = [(title, text) for title, text in chapters if text.strip()]
 
-            logger.info(f"Chapters count: {len(chapters)}.")
+            logger.info(f"[{LOG_PREFIX}]Chapters:{len(chapters)}")
 
             # Check chapter start and end args
             if self.config.chapter_start < 1 or self.config.chapter_start > len(chapters):
