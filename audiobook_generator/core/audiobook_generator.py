@@ -64,7 +64,7 @@ class AudiobookGenerator:
 
             return True
         except Exception as e:
-            logger.exception(f"Error processing chapter {idx}, error: {e}")
+            logger.exception(f"[{LOG_PREFIX}]Error:{idx},{e}")
             return False
 
     def process_chapter_wrapper(self, args):
@@ -153,8 +153,10 @@ class AudiobookGenerator:
                 for idx, title in failed_chapters:
                     logger.warning(f"  - Chapter {idx}: {title}")
                 logger.info(f"Conversion completed with {len(failed_chapters)} failed chapters. Check your output directory: {self.config.output_folder} and log file: {self.config.log_file} for more details.")
+                logger.info(f"[{LOG_PREFIX}]ConversionFailed:{len(failed_chapters)}")
             else:
                 logger.info(f"All chapters converted successfully. Check your output directory: {self.config.output_folder}")
+                logger.info(f"[{LOG_PREFIX}]ConversionSuccess:{self.config.output_folder}")
 
         except KeyboardInterrupt:
             logger.info("Audiobook generation process interrupted by user (Ctrl+C).")
