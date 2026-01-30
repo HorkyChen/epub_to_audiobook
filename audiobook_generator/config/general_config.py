@@ -8,6 +8,7 @@ class GeneralConfig:
         self.log = getattr(args, 'log', None)
         self.log_file = None
         self.no_prompt = getattr(args, 'no_prompt', None)
+        self.overwrite = getattr(args, 'overwrite', True)
         self.worker_count = getattr(args, 'worker_count', None)
         self.use_pydub_merge = getattr(args, 'use_pydub_merge', None)
 

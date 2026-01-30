@@ -54,6 +54,13 @@ class AudiobookGenerator:
                 self.config.output_folder,
                 f"{idx:04d}_{title}.{tts_provider.get_output_file_extension()}",
             )
+
+            # Check if file exists and overwrite is False
+            if not self.config.overwrite and os.path.exists(output_file):
+                logger.info(f"Skipping chapter {idx}: {title}, audio file already exists: {output_file}")
+                logger.info(f"[{LOG_PREFIX}]Converted:{idx},{title}")
+                return True
+
             audio_tags = AudioTags(
                 title, book_parser.get_book_author(), book_parser.get_book_title(), idx
             )

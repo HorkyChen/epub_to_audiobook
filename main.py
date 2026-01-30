@@ -36,6 +36,11 @@ def handle_args():
         help="Don't ask the user if they wish to continue after estimating the cloud cost for TTS. Useful for scripting.",
     )
     parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing audio files.",
+    )
+    parser.add_argument(
         "--language",
         default="en-US",
         help="Language for the text-to-speech service (default: en-US). For Azure TTS (--tts=azure), check https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts#text-to-speech for supported languages. For OpenAI TTS (--tts=openai), their API detects the language automatically. But setting this will also help on splitting the text into chunks with different strategies in this tool, especially for Chinese characters. For Chinese books, use zh-CN, zh-TW, or zh-HK.",
@@ -143,7 +148,7 @@ def handle_args():
     edge_tts_group.add_argument(
         "--voice_rate",
         help="""
-            Speaking rate of the text. Valid relative values range from -50%%(--xxx='-50%%') to +100%%. 
+            Speaking rate of the text. Valid relative values range from -50%%(--xxx='-50%%') to +100%%.
             For negative value use format --arg=value,
         """,
     )
@@ -219,7 +224,7 @@ def main(config=None, log_file=None):
         # Otherwise (e.g., CLI usage without a specific log file from UI),
         # generate a unique log file name.
         effective_log_file = generate_unique_log_path("EtA")
-    
+
     # Ensure config.log_file is updated, as it's used by AudiobookGenerator for worker processes.
     config.log_file = effective_log_file
 
