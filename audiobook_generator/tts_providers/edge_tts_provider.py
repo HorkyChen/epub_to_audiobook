@@ -21,6 +21,7 @@ from audiobook_generator.tts_providers.base_tts_provider import BaseTTSProvider
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 12  # Max_retries constant for network errors
+AUDIO_GENERATION_TIMEOUT = 120  # Timeout in seconds for audio generation
 
 
 async def get_supported_voices():
@@ -100,10 +101,21 @@ class CommWithPauses:
         logger.debug(f"Generating audio for: <{text}>")
         # this genertes the real TTS using edge_tts for this part.
         temp_chunk = io.BytesIO()
-        communicate = edge_tts.Communicate(text, self.voice_name, **self.kwargs)
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                temp_chunk.write(chunk["data"])
+
+        async def _generate_with_edge_tts():
+            communicate = edge_tts.Communicate(text, self.voice_name, **self.kwargs)
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    temp_chunk.write(chunk["data"])
+
+        try:
+            # Add timeout to prevent hanging on network issues
+            await asyncio.wait_for(_generate_with_edge_tts(), timeout=AUDIO_GENERATION_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Audio generation timed out after {AUDIO_GENERATION_TIMEOUT} seconds for text: <{text[:100]}...>"
+            )
+            raise TimeoutError(f"Audio generation timed out after {AUDIO_GENERATION_TIMEOUT} seconds")
 
         temp_chunk.seek(0)
         # handle the case where the chunk is empty
@@ -180,7 +192,7 @@ class EdgeTTSProvider(BaseTTSProvider):
             chunk_id = f"chapter-{audio_tags.idx}_{audio_tags.title}_chunk_{i}_of_{len(text_chunks)}"
             logger.info(f"Processing {chunk_id}, length={len(chunk)}")
             logger.debug(f"Processing {chunk_id}, length={len(chunk)}, text=[{chunk}]")
-            
+
             for retry in range(MAX_RETRIES):
                 try:
                     communicate = CommWithPauses(

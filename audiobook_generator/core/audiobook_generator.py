@@ -71,7 +71,7 @@ class AudiobookGenerator:
 
             return True
         except Exception as e:
-            logger.exception(f"[{LOG_PREFIX}]Error:{idx},{e}")
+            logger.error(f"[{LOG_PREFIX}]Error:{idx},{e}")
             return False
 
     def process_chapter_wrapper(self, args):
