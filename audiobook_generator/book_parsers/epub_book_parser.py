@@ -42,7 +42,14 @@ class EpubBookParser(BaseBookParser):
     def get_chapters(self, break_string) -> List[Tuple[str, str]]:
         chapters = []
         search_and_replaces = self.get_search_and_replaces()
-        for item in self.book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+        for item_id, linear in self.book.spine:
+            if linear == 'no' and item_id != 'nav':
+                continue
+
+            item = self.book.get_item_with_id(item_id)
+            if not item or item.get_type() != ebooklib.ITEM_DOCUMENT:
+                continue
+
             content = item.get_content()
             soup = BeautifulSoup(content, "lxml-xml")
             raw = soup.get_text(strip=False)
