@@ -20,6 +20,7 @@ from audiobook_generator.tts_providers.base_tts_provider import BaseTTSProvider
 
 logger = logging.getLogger(__name__)
 
+MAX_DEBUG_LOG_CHARS = 100  # Max characters to log in debug messages for text content
 MAX_RETRIES = 12  # Max_retries constant for network errors
 AUDIO_GENERATION_TIMEOUT = 120  # Timeout in seconds for audio generation
 
@@ -68,7 +69,7 @@ class CommWithPauses:
 
     def parse_text(self):
         logger.debug(
-            f"Parsing the text, looking for break/pauses in text: <{self.full_text}>"
+            f"Parsing the text, looking for break/pauses in text: <{self.full_text[:MAX_DEBUG_LOG_CHARS]}...>"
         )
         if self.break_string not in self.full_text:
             logger.debug(f"No break/pauses found in the text")
@@ -76,13 +77,13 @@ class CommWithPauses:
 
         parts = self.full_text.split(self.break_string)
         parts = [p for p in parts if p.strip()] # skip empty parts
-        logger.debug(f"split into <{len(parts)}> parts: {parts}")
+        logger.debug(f"split into <{len(parts)}> parts: {[p[:MAX_DEBUG_LOG_CHARS] for p in parts]}")
         return parts
 
     async def chunkify(self):
         logger.debug(f"Chunkifying the text")
         for content in self.parsed:
-            logger.debug(f"content from parsed: <{content}>")
+            logger.debug(f"content from parsed: <{content[:MAX_DEBUG_LOG_CHARS]}>...")
             audio_bytes = await self.generate_audio(content)
             self.file.write(audio_bytes)
             if content != self.parsed[-1] and self.break_duration > 0:
@@ -98,7 +99,7 @@ class CommWithPauses:
         return silent.raw_data  # type: ignore
 
     async def generate_audio(self, text: str) -> bytes:
-        logger.debug(f"Generating audio for: <{text}>")
+        logger.debug(f"Generating audio for: <{text[:MAX_DEBUG_LOG_CHARS]}...>")
         # this genertes the real TTS using edge_tts for this part.
         temp_chunk = io.BytesIO()
 
@@ -191,7 +192,7 @@ class EdgeTTSProvider(BaseTTSProvider):
         for i, chunk in enumerate(text_chunks, 1):
             chunk_id = f"chapter-{audio_tags.idx}_{audio_tags.title}_chunk_{i}_of_{len(text_chunks)}"
             logger.info(f"Processing {chunk_id}, length={len(chunk)}")
-            logger.debug(f"Processing {chunk_id}, length={len(chunk)}, text=[{chunk}]")
+            logger.debug(f"Processing {chunk_id}, length={len(chunk)}, text=[{chunk[:MAX_DEBUG_LOG_CHARS]}...]")
 
             for retry in range(MAX_RETRIES):
                 try:
