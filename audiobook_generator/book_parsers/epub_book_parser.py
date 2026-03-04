@@ -53,7 +53,7 @@ class EpubBookParser(BaseBookParser):
             content = item.get_content()
             soup = BeautifulSoup(content, "lxml-xml")
             raw = soup.get_text(strip=False)
-            logger.debug(f"Raw text: <{raw[:]}>")
+            # logger.debug(f"Raw text: <{raw[:200]}>")
 
             # Replace excessive whitespaces and newline characters based on the mode
             if self.config.newline_mode == "single":
