@@ -40,6 +40,7 @@ class GeneralConfig:
         self.voice_volume = getattr(args, 'voice_volume', None)
         self.voice_pitch = getattr(args, 'voice_pitch', None)
         self.proxy = getattr(args, 'proxy', None)
+        self.output_srt = getattr(args, 'output_srt', False)
 
         # TTS provider: Piper specific arguments
         self.piper_path = getattr(args, 'piper_path', None)

@@ -82,6 +82,13 @@ class AudiobookGenerator:
     def run(self):
         try:
             logger.info("Starting audiobook generation...")
+
+            if getattr(self.config, "output_srt", False) and self.config.tts != "edge":
+                logger.warning(
+                    f"--output_srt is only supported by the edge TTS provider; "
+                    f"ignoring it for tts={self.config.tts}."
+                )
+
             book_parser = get_book_parser(self.config)
             tts_provider = get_tts_provider(self.config)
 

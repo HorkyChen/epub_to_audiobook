@@ -9,6 +9,12 @@ from audiobook_generator.tts_providers.base_tts_provider import (
 from audiobook_generator.utils.log_handler import setup_logging, generate_unique_log_path
 
 
+def str2bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "y", "on")
+
+
 def handle_args():
     parser = argparse.ArgumentParser(description="Convert text book to audiobook")
     parser.add_argument("input_file", help="Path to the EPUB file")
@@ -172,6 +178,17 @@ def handle_args():
     edge_tts_group.add_argument(
         "--proxy",
         help="Proxy server for the TTS provider. Format: http://[username:password@]proxy.server:port",
+    )
+
+    edge_tts_group.add_argument(
+        "--output_srt",
+        type=str2bool,
+        nargs="?",
+        const=True,
+        default=False,
+        help="Generate an SRT subtitle file alongside each chapter's audio file, "
+        "using edge-tts's sentence boundary timestamps (edge TTS only, ignored for other providers). "
+        "Accepts an optional true/false value, e.g. '--output_srt' or '--output_srt false'.",
     )
 
     azure_edge_tts_group = parser.add_argument_group(title="azure/edge specific")

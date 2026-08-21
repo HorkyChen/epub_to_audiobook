@@ -2,6 +2,7 @@ import asyncio
 import logging
 import math
 import io
+import os
 from time import sleep
 
 import edge_tts
@@ -23,6 +24,19 @@ logger = logging.getLogger(__name__)
 MAX_DEBUG_LOG_CHARS = 100  # Max characters to log in debug messages for text content
 MAX_RETRIES = 12  # Max_retries constant for network errors
 AUDIO_GENERATION_TIMEOUT = 120  # Timeout in seconds for audio generation
+
+# Raw PCM produced by CommWithPauses is always 24kHz/16-bit/mono (see get_audio_stream()).
+PCM_SAMPLE_WIDTH = 2
+PCM_FRAME_RATE = 24000
+# edge-tts reports WordBoundary/SentenceBoundary offset & duration in 100-nanosecond
+# units (.NET ticks). 1 millisecond == 10_000 ticks.
+TICKS_PER_MS = 10_000
+
+
+def _pcm_bytes_to_ticks(num_bytes: int) -> int:
+    """Convert a length of 24kHz/16-bit/mono raw PCM bytes into edge-tts's tick unit."""
+    duration_ms = num_bytes / (PCM_SAMPLE_WIDTH * PCM_FRAME_RATE) * 1000
+    return int(duration_ms * TICKS_PER_MS)
 
 
 async def get_supported_voices():
@@ -55,6 +69,7 @@ class CommWithPauses:
         break_string: str,
         break_duration: int = 1250,
         output_format_ext: str = "mp3",
+        collect_subtitles: bool = False,
         **kwargs,
     ) -> None:
         self.full_text = text
@@ -63,6 +78,15 @@ class CommWithPauses:
         self.break_duration = int(break_duration)
         self.output_format_ext = output_format_ext
         self.kwargs = kwargs
+
+        # When enabled, accumulates SentenceBoundary events (offset/duration/text)
+        # reported by edge-tts, re-based to be relative to the start of this
+        # CommWithPauses instance's own audio stream (i.e. one text_to_speech chunk).
+        self.collect_subtitles = collect_subtitles
+        self.cue_events = []
+        # Running total, in edge-tts ticks, of audio + pause duration already
+        # written to self.file. Used to offset boundary events emitted by later parts.
+        self.elapsed_ticks = 0
 
         self.parsed = self.parse_text()
         self.file = io.BytesIO()
@@ -84,12 +108,22 @@ class CommWithPauses:
         logger.debug(f"Chunkifying the text")
         for content in self.parsed:
             logger.debug(f"content from parsed: <{content[:MAX_DEBUG_LOG_CHARS]}>...")
-            audio_bytes = await self.generate_audio(content)
+            part_offset_ticks = self.elapsed_ticks
+            audio_bytes, events = await self.generate_audio(content)
             self.file.write(audio_bytes)
+            self.elapsed_ticks += _pcm_bytes_to_ticks(len(audio_bytes))
+            if self.collect_subtitles:
+                for event in events:
+                    self.cue_events.append({
+                        "offset": part_offset_ticks + event["offset"],
+                        "duration": event["duration"],
+                        "text": event["text"],
+                    })
             if content != self.parsed[-1] and self.break_duration > 0:
                 # only same break duration for all breaks is supported now
                 pause_bytes = self.generate_pause(self.break_duration)
                 self.file.write(pause_bytes)
+                self.elapsed_ticks += self.break_duration * TICKS_PER_MS
         logger.debug(f"Chunkifying done")
 
     def generate_pause(self, time: int) -> bytes:
@@ -98,16 +132,23 @@ class CommWithPauses:
         silent: AudioSegment = AudioSegment.silent(time, 24000)
         return silent.raw_data  # type: ignore
 
-    async def generate_audio(self, text: str) -> bytes:
+    async def generate_audio(self, text: str):
         logger.debug(f"Generating audio for: <{text[:MAX_DEBUG_LOG_CHARS]}...>")
         # this genertes the real TTS using edge_tts for this part.
         temp_chunk = io.BytesIO()
+        events = []
 
         async def _generate_with_edge_tts():
             communicate = edge_tts.Communicate(text, self.voice_name, **self.kwargs)
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     temp_chunk.write(chunk["data"])
+                elif self.collect_subtitles and chunk["type"] == "SentenceBoundary":
+                    events.append({
+                        "offset": chunk["offset"],
+                        "duration": chunk["duration"],
+                        "text": chunk["text"],
+                    })
 
         try:
             # Add timeout to prevent hanging on network issues
@@ -128,8 +169,12 @@ class CommWithPauses:
                 f"Failed to decode the chunk, reason: {e}, returning a silent chunk."
             )
             decoded_chunk = AudioSegment.silent(0, 24000)
+            # The audio for this part could not be decoded, so any boundary events we
+            # captured no longer correspond to real audio; drop them to avoid emitting
+            # subtitle cues that point at silence.
+            events = []
         logger.debug(f"Returning the decoded chunk")
-        return decoded_chunk.raw_data  # type: ignore
+        return decoded_chunk.raw_data, events  # type: ignore
 
     async def get_audio_stream(self) -> io.BytesIO:
         await self.chunkify() # main logic to chunkify the text and generate audio segments
@@ -188,6 +233,12 @@ class EdgeTTSProvider(BaseTTSProvider):
 
         text_chunks = split_text(text, max_chars, self.config.language)
 
+        collect_subtitles = bool(getattr(self.config, "output_srt", False))
+        # Cue offsets/durations, in edge-tts ticks, relative to the start of this chapter.
+        subtitle_events = []
+        # Running total, in ticks, of audio already written by previous text_chunks.
+        chapter_elapsed_ticks = 0
+
         tmp_files = []
         for i, chunk in enumerate(text_chunks, 1):
             chunk_id = f"chapter-{audio_tags.idx}_{audio_tags.title}_chunk_{i}_of_{len(text_chunks)}"
@@ -202,6 +253,7 @@ class EdgeTTSProvider(BaseTTSProvider):
                         break_string=self.get_break_string().strip(),
                         break_duration=int(self.config.break_duration),
                         output_format_ext=self.get_output_file_extension(),
+                        collect_subtitles=collect_subtitles,
                         rate=self.config.voice_rate,
                         volume=self.config.voice_volume,
                         pitch=self.config.voice_pitch,
@@ -214,6 +266,14 @@ class EdgeTTSProvider(BaseTTSProvider):
                         prefix=chunk_id,
                     )
                     tmp_files.append(tmp_file)
+                    if collect_subtitles:
+                        for event in communicate.cue_events:
+                            subtitle_events.append({
+                                "offset": chapter_elapsed_ticks + event["offset"],
+                                "duration": event["duration"],
+                                "text": event["text"],
+                            })
+                        chapter_elapsed_ticks += communicate.elapsed_ticks
                     break  # success
                 except Exception as e:
                     logger.warning(
@@ -233,6 +293,32 @@ class EdgeTTSProvider(BaseTTSProvider):
         )
 
         set_audio_tags(output_file, audio_tags)
+
+        if collect_subtitles:
+            self._write_srt(output_file, subtitle_events)
+
+    def _write_srt(self, output_file: str, events: list) -> None:
+        """Write an SRT subtitle file next to output_file, using the sentence
+        boundary events collected while generating it (see text_to_speech())."""
+        if not events:
+            logger.warning(
+                f"No subtitle events collected for {output_file}, skipping SRT generation."
+            )
+            return
+
+        sub_maker = edge_tts.SubMaker()
+        for event in events:
+            sub_maker.feed({
+                "type": "SentenceBoundary",
+                "offset": event["offset"],
+                "duration": event["duration"],
+                "text": event["text"],
+            })
+
+        srt_path = os.path.splitext(output_file)[0] + ".srt"
+        with open(srt_path, "w", encoding="utf-8") as f:
+            f.write(sub_maker.get_srt())
+        logger.info(f"Generated subtitle file: {srt_path}")
 
     def estimate_cost(self, total_chars):
         return math.ceil(total_chars / 1000) * self.price
